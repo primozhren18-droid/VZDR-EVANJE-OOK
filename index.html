@@ -25,19 +25,20 @@
   </div>
 </header>
 
-<!-- ================= LOGIN ================= -->
+<!-- ================= LOGIN (PIN) ================= -->
 <main id="login" class="card">
-  <h2>Prijava</h2>
-  <p class="muted">Prijavi se z emailom (vsi imate trenutno enako geslo).</p>
-
-  <label class="label">Email</label>
-  <input class="input" id="email" type="email" placeholder="ime.priimek@unior.si" />
+  <h2>VZDRŽEVANJE OOK</h2>
+  <p class="muted">Vnesi geslo (PIN) za dostop.</p>
 
   <label class="label">Geslo</label>
-  <input class="input" id="password" type="password" placeholder="geslo" />
+  <input class="input" id="password" type="password" inputmode="numeric" placeholder="••••" />
 
-  <button class="btn" id="loginBtn">Prijava</ž</button>
+  <button class="btn" id="loginBtn">Vstop</button>
   <div class="muted small" id="loginMsg"></div>
+
+  <div class="muted small" style="margin-top:10px;">
+    Testni PIN: <b>1989</b>
+  </div>
 </main>
 
 <!-- ================= APP ================= -->
@@ -51,47 +52,185 @@
     <button class="navbtn" data-tab="settings">Nastavitve</button>
   </nav>
 
-  <!-- NOVI VNOS -->
+  <!-- ================= NEW / EDIT ================= -->
   <section class="card tabpanel" id="tab-new">
-    <h2>Novi vnos</h2>
-    <!-- vsebino ureja app.js -->
+    <div class="row space">
+      <h2 id="formTitle">Novi vnos</h2>
+      <button class="btn ghost hidden" id="cancelEditBtn">Prekliči</button>
+    </div>
+
+    <div class="grid2">
+      <div>
+        <label class="label">Stanje</label>
+        <select class="input" id="state">
+          <option value="OPEN">ODPRTO</option>
+          <option value="CLOSED">ZAKLJUČENO</option>
+        </select>
+      </div>
+      <div>
+        <label class="label">Status</label>
+        <select class="input" id="status">
+          <option value="OK">OK</option>
+          <option value="NUJNO">NUJNO</option>
+          <option value="CAKA_DELE">ČAKA DELE</option>
+        </select>
+      </div>
+    </div>
+
+    <label class="label">ID okvare / št. naloga</label>
+    <input class="input" id="faultId" placeholder="npr. WO-12345 / OKV-2026-01 ..." />
+
+    <label class="label">Stroj / lokacija</label>
+    <div class="row">
+      <input class="input" id="machine" placeholder="npr. 20141 FPZ UNIOR 1" />
+      <button class="btn ghost" id="pickMachineBtn" type="button">📋</button>
+    </div>
+
+    <label class="label">Kaj se dela (opis)</label>
+    <textarea class="input" id="work" rows="3" placeholder="npr. menjava cevi, nastavitev senzorja..."></textarea>
+
+    <div class="grid2">
+      <div>
+        <label class="label">Trajanje (min)</label>
+        <input class="input" id="durationMin" inputmode="numeric" placeholder="npr. 45" />
+      </div>
+      <div>
+        <label class="label">SAM / TIM</label>
+        <select class="input" id="mode">
+          <option value="SAM">SAM</option>
+          <option value="TIM">TIM</option>
+        </select>
+      </div>
+    </div>
+
+    <label class="label">Kdo je delal</label>
+    <select class="input" id="who">
+      <option>HREN PRIMOŽ</option>
+      <option>FRANCI SEVŠEK</option>
+      <option>MIROSLAV KLEMEN</option>
+      <option>DAVID HROVAT</option>
+    </select>
+
+    <label class="label">Material</label>
+    <input class="input" id="materials" placeholder="npr. O-ring 2 kos, olje 3L..." />
+
+    <label class="label">Opazke</label>
+    <textarea class="input" id="obs" rows="2"></textarea>
+
+    <label class="label">Moje razmišljanje</label>
+    <textarea class="input" id="think" rows="2"></textarea>
+
+    <label class="label">Slike</label>
+    <input class="input" id="photos" type="file" accept="image/*" capture="environment" multiple />
+    <div class="photoRow" id="photoPreview"></div>
+    <div class="muted small" id="photoHint"></div>
+
+    <div class="row space" style="margin-top:10px;">
+      <button class="btn" id="saveBtn" type="button">Shrani</button>
+      <button class="btn ghost" id="clearBtn" type="button">Počisti</button>
+    </div>
+
+    <div class="muted small" id="saveMsg"></div>
   </section>
 
-  <!-- DNEVNIK -->
+  <!-- ================= LIST ================= -->
   <section class="card tabpanel hidden" id="tab-list">
-    <h2>Dnevnik</h2>
-    <div id="entryList"></div>
+    <div class="row space">
+      <h2>Dnevnik</h2>
+      <button class="btn ghost" id="exportCsvBtn" type="button">CSV</button>
+    </div>
+
+    <div class="row">
+      <input class="input" id="search" placeholder="Išči (stroj, opis, material, ID okvare)..." />
+      <button class="btn ghost" id="exportPdfBtn" type="button">PDF</button>
+    </div>
+
+    <div class="filters">
+      <button class="chip active" data-filter="ALL" type="button">Vse</button>
+      <button class="chip" data-filter="OPEN" type="button">Odprto</button>
+      <button class="chip" data-filter="WAIT" type="button">Čaka dele</button>
+      <button class="chip" data-filter="CLOSED" type="button">Zaključeno</button>
+    </div>
+
+    <div class="list" id="entryList"></div>
   </section>
 
-  <!-- STROJ -->
+  <!-- ================= MACHINE PROFILE ================= -->
   <section class="card tabpanel hidden" id="tab-machine">
-    <h2>Profil stroja</h2>
-    <div id="machineEntries"></div>
+    <div class="row space">
+      <h2>Profil stroja</h2>
+      <button class="btn ghost" id="machineJumpToNew" type="button">+ Vnos</button>
+    </div>
+
+    <div class="row">
+      <input class="input" id="machineProfile" placeholder="izberi stroj..." />
+      <button class="btn ghost" id="machinePickBtn" type="button">📋</button>
+    </div>
+
+    <div class="card inner">
+      <h3>Letna preventiva (1× leto)</h3>
+      <div class="muted small" id="machinePrevLine">Izberi stroj.</div>
+
+      <div class="row" style="margin-top:8px;">
+        <input class="input" id="machinePrevDate" type="date" />
+        <button class="btn" id="machinePrevDoneBtn" type="button">Opravljeno</button>
+      </div>
+
+      <div class="muted small" id="machinePrevMsg" style="margin-top:6px;"></div>
+    </div>
+
+    <div class="card inner">
+      <h3>Vnosi za ta stroj</h3>
+      <div class="list" id="machineEntries"></div>
+    </div>
   </section>
 
-  <!-- PREVENTIVA -->
+  <!-- ================= PREVENTIVA ================= -->
   <section class="card tabpanel hidden" id="tab-preventiva">
-    <h2>Preventiva</h2>
-    <div id="preventivaList"></div>
+    <h2>Preventiva 1× letno</h2>
+    <p class="muted small">Označi opravljeno letno preventivo za stroj. Aplikacija pokaže OK/KMALU/ZAMUJENO.</p>
+
+    <div class="item">
+      <div class="row">
+        <input class="input" id="prevMachine" placeholder="izberi stroj..." />
+        <button class="btn ghost" id="prevPickBtn" type="button">📋</button>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <input class="input" id="prevDate" type="date" />
+        <button class="btn" id="prevDoneBtn" type="button">Opravljeno</button>
+      </div>
+      <div class="muted small" id="prevMsg" style="margin-top:6px;"></div>
+    </div>
+
+    <div class="list" id="preventivaList"></div>
   </section>
 
-  <!-- NASTAVITVE -->
+  <!-- ================= SETTINGS ================= -->
   <section class="card tabpanel hidden" id="tab-settings">
     <h2>Nastavitve</h2>
-    <textarea class="input" id="machinesList" rows="6"></textarea>
-    <button class="btn" id="saveMachinesBtn">Shrani stroje</button>
-    <div class="muted small" id="machinesMsg"></div>
+
+    <div class="card inner">
+      <h3>Seznam strojev</h3>
+      <p class="muted small">Vsaka vrstica = en stroj/lokacija.</p>
+      <textarea class="input" id="machinesList" rows="7"></textarea>
+      <button class="btn" id="saveMachinesBtn" type="button">Shrani stroje</button>
+      <div class="muted small" id="machinesMsg"></div>
+    </div>
+
+    <div class="card inner danger">
+      <h3>Opozorilo</h3>
+      <p class="muted small">Trenutno je dostop zaščiten samo z lokalnim PIN (1989). To ni varno za produkcijo.</p>
+    </div>
   </section>
 
 </main>
 
 <!-- ================= MODAL (IZBIRA) ================= -->
-<!-- POMEMBNO: modal ima PRIVZETO class="modal hidden" -->
 <div id="modal" class="modal hidden">
   <div class="modalBox card">
     <div class="row space">
       <h3 id="modalTitle">Izbira</h3>
-      <button class="btn ghost" id="modalClose">✖</button>
+      <button class="btn ghost" id="modalClose" type="button">✖</button>
     </div>
     <div id="modalBody"></div>
   </div>
