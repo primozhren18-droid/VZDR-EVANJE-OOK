@@ -17,6 +17,11 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-storage.js";
 
 const $ = (id) => document.getElementById(id);
+// FORCE: modal ne sme biti odprt ob zagonu (reši cache/overlay bug)
+window.addEventListener("load", () => {
+  const m = document.getElementById("modal");
+  if (m) m.classList.add("hidden");
+});
 
 const DEFAULT_MACHINES = [
   "20141 FPZ UNIOR 1",
