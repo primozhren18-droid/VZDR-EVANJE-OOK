@@ -273,26 +273,33 @@ async function refreshLastMachineLine(){
   $("lastMachineLine").textContent = last ? `Zadnji stroj: ${last}` : "";
 }
 
+/**
+ * FIX: Če ni seznama strojev, sploh ne odpri modala.
+ * Namesto tega pokaži alert.
+ */
 async function showMachinesPicker(){
   const machines = await getMachines();
+  if (!machines.length) {
+    alert("Najprej dodaj seznam strojev v Nastavitvah.");
+    return;
+  }
+
   const wrap = document.createElement("div");
   wrap.className = "modalList";
-  if (!machines.length){
-    wrap.innerHTML = `<div class="muted small">Ni seznama. Dodaj v Nastavitve → Seznam strojev.</div>`;
-  } else {
-    machines.forEach(m=>{
-      const b = document.createElement("button");
-      b.className = "modalItem";
-      b.textContent = m;
-      b.addEventListener("click", async ()=>{
-        $("machine").value = m;
-        await setLastMachine(m);
-        await refreshLastMachineLine();
-        closeModal();
-      });
-      wrap.appendChild(b);
+
+  machines.forEach(m=>{
+    const b = document.createElement("button");
+    b.className = "modalItem";
+    b.textContent = m;
+    b.addEventListener("click", async ()=>{
+      $("machine").value = m;
+      await setLastMachine(m);
+      await refreshLastMachineLine();
+      closeModal();
     });
-  }
+    wrap.appendChild(b);
+  });
+
   openModal("Izberi stroj", wrap);
 }
 
@@ -554,7 +561,6 @@ async function loadSettingsToUI(){
   await renderLeadOptions();
   await renderTeamChips();
 
-  // default lead = ME if empty
   if (!$("lead").value) $("lead").value = "ME";
 
   await refreshLastMachineLine();
@@ -631,9 +637,11 @@ async function main(){
     }
 
     const durationMin = Number(($("duration").value||"").trim());
+    const existing = editingId ? await getEntry(editingId) : null;
+
     const entry = {
       id: editingId || crypto.randomUUID(),
-      createdAt: (editingId ? (await getEntry(editingId))?.createdAt : null) || nowISO(),
+      createdAt: (existing?.createdAt) || nowISO(),
       updatedAt: nowISO(),
       machine,
       work,
@@ -699,7 +707,7 @@ async function main(){
   });
 
   // print
-  $("printSummaryBtn").addEventListener("click", printCurrent);
+  $("printSummaryBtn").addEventListener("click", ()=>window.print());
 
   // export month to pdf quickly
   $("exportMonthBtn").addEventListener("click", async ()=>{
@@ -707,7 +715,7 @@ async function main(){
     await new Promise(r=>setTimeout(r,50));
     $("monthSummaryBtn").click();
     await new Promise(r=>setTimeout(r,50));
-    printCurrent();
+    window.print();
   });
 
   // CSV
