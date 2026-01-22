@@ -1,7 +1,7 @@
 import { auth, db, storage } from "./firebase.js";
 
 import {
-  signInWithEmailAndPassword,
+  signInAnonymously,
   onAuthStateChanged,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
@@ -17,10 +17,22 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-storage.js";
 
 const $ = (id) => document.getElementById(id);
+
+// =====================
+// PIN / zaklep
+// =====================
+const APP_PASSWORD = "1989";
+const UNLOCK_KEY = "vzdrzevanje_ook_unlocked";
+
 // FORCE: modal ne sme biti odprt ob zagonu (reši cache/overlay bug)
-window.addEventListener("load", () => {
+window.addEventListener("load", async () => {
   const m = document.getElementById("modal");
   if (m) m.classList.add("hidden");
+
+  // če je že odklenjeno, poskusi anon prijavo (da ni treba vsakič PIN)
+  if (localStorage.getItem(UNLOCK_KEY) === "1") {
+    try { await signInAnonymously(auth); } catch {}
+  }
 });
 
 const DEFAULT_MACHINES = [
@@ -54,12 +66,14 @@ function escapeHtml(s){
 }
 function setTodayLine(){
   const d = new Date();
-  $("todayLine").textContent = d.toLocaleDateString("sl-SI", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+  const el = $("todayLine");
+  if (el) el.textContent = d.toLocaleDateString("sl-SI", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
 }
 function showTab(name){
   document.querySelectorAll(".navbtn").forEach(b=>b.classList.toggle("active", b.dataset.tab===name));
   ["new","list","machine","preventiva","settings"].forEach(t=>{
-    $("tab-"+t).classList.toggle("hidden", t!==name);
+    const panel = $("tab-"+t);
+    if (panel) panel.classList.toggle("hidden", t!==name);
   });
 }
 function openModal(title, bodyNode){
@@ -104,8 +118,8 @@ function stateLabel(state){
   return state==="CLOSED" ? "ZAKLJUČENO" : "ODPRTO";
 }
 
-modalClose.addEventListener("click", closeModal);
-modal.addEventListener("click", (e)=>{ if (e.target === modal) closeModal(); });
+modalClose?.addEventListener("click", closeModal);
+modal?.addEventListener("click", (e)=>{ if (e.target === modal) closeModal(); });
 
 document.querySelectorAll(".navbtn").forEach(b=>{
   b.addEventListener("click", async ()=>{
@@ -115,7 +129,7 @@ document.querySelectorAll(".navbtn").forEach(b=>{
   });
 });
 
-$("syncBtn").addEventListener("click", async ()=> {
+$("syncBtn")?.addEventListener("click", async ()=> {
   await loadMachines();
   renderEntries(getFilteredEntries());
   await refreshPreventivaList();
@@ -123,35 +137,50 @@ $("syncBtn").addEventListener("click", async ()=> {
   alert("Sinhronizirano ✅");
 });
 
-$("logoutBtn").addEventListener("click", async ()=> {
+$("logoutBtn")?.addEventListener("click", async ()=> {
+  // zakleni in odjavi
+  localStorage.removeItem(UNLOCK_KEY);
   await signOut(auth);
 });
 
-// -------- AUTH --------
-$("loginBtn").addEventListener("click", async ()=>{
+// -------- AUTH (PIN) --------
+$("loginBtn")?.addEventListener("click", async ()=>{
   $("loginMsg").textContent = "";
-  const email = $("email").value.trim();
-  const password = $("password").value;
-  if (!email || !password) { $("loginMsg").textContent = "Vpiši email in geslo."; return; }
+
+  const password = ($("password")?.value || "").trim();
+  if (!password) { $("loginMsg").textContent = "Vpiši geslo."; return; }
+
+  if (password !== APP_PASSWORD) {
+    $("loginMsg").textContent = "Napačno geslo.";
+    return;
+  }
+
+  // unlock
+  localStorage.setItem(UNLOCK_KEY, "1");
 
   try{
-    await signInWithEmailAndPassword(auth, email, password);
+    await signInAnonymously(auth);
   } catch(e){
-    $("loginMsg").textContent = "Prijava ni uspela. Preveri email/geslo.";
+    $("loginMsg").textContent =
+      "Ne morem v Firebase. Preveri: Authentication → Sign-in method → Anonymous ENABLE.";
   }
 });
 
 onAuthStateChanged(auth, async (user)=>{
+  // če ni prijave v Firebase, pokaži PIN login
   if (!user){
     if (unsubEntries) { unsubEntries(); unsubEntries = null; }
     entriesCache = [];
-    loginBox.classList.remove("hidden");
-    appBox.classList.add("hidden");
+
+    loginBox?.classList.remove("hidden");
+    appBox?.classList.add("hidden");
     return;
   }
 
-  loginBox.classList.add("hidden");
-  appBox.classList.remove("hidden");
+  // če je prijava OK (anon), pokaži app
+  loginBox?.classList.add("hidden");
+  appBox?.classList.remove("hidden");
+
   setTodayLine();
   showTab("new");
 
@@ -159,9 +188,9 @@ onAuthStateChanged(auth, async (user)=>{
   await loadMachines();
   await setupEntriesListener();
 
-  // default dates
-  $("prevDate").value = fmtDateISO(new Date());
-  $("machinePrevDate").value = fmtDateISO(new Date());
+  // default dates (če elementi obstajajo)
+  if ($("prevDate")) $("prevDate").value = fmtDateISO(new Date());
+  if ($("machinePrevDate")) $("machinePrevDate").value = fmtDateISO(new Date());
 
   // default previews
   resetPhotoUI();
@@ -182,12 +211,12 @@ async function loadMachines(){
   const refDoc = doc(db, "meta", "machines");
   const snap = await getDoc(refDoc);
   machinesCache = (snap.data()?.list || DEFAULT_MACHINES);
-  $("machinesList").value = machinesCache.join("\n");
+  if ($("machinesList")) $("machinesList").value = machinesCache.join("\n");
 }
-$("saveMachinesBtn").addEventListener("click", async ()=>{
-  const lines = ($("machinesList").value || "").split("\n").map(s=>s.trim()).filter(Boolean);
+$("saveMachinesBtn")?.addEventListener("click", async ()=>{
+  const lines = ($("machinesList")?.value || "").split("\n").map(s=>s.trim()).filter(Boolean);
   await setDoc(doc(db,"meta","machines"), { list: lines, updatedAt: serverTimestamp() }, { merge:true });
-  $("machinesMsg").textContent = "Shranjeno ✅";
+  if ($("machinesMsg")) $("machinesMsg").textContent = "Shranjeno ✅";
   machinesCache = lines;
   await refreshPreventivaList();
   await refreshMachineProfile();
@@ -213,27 +242,31 @@ async function showMachinesPicker(targetInputId){
   openModal("Izberi stroj", wrap);
 }
 
-$("pickMachineBtn").addEventListener("click", ()=>showMachinesPicker("machine"));
-$("prevPickBtn").addEventListener("click", ()=>showMachinesPicker("prevMachine"));
-$("machinePickBtn").addEventListener("click", ()=>showMachinesPicker("machineProfile"));
+$("pickMachineBtn")?.addEventListener("click", ()=>showMachinesPicker("machine"));
+$("prevPickBtn")?.addEventListener("click", ()=>showMachinesPicker("prevMachine"));
+$("machinePickBtn")?.addEventListener("click", ()=>showMachinesPicker("machineProfile"));
 
 // -------- PHOTOS --------
-$("photos").addEventListener("change", (e)=>{
+$("photos")?.addEventListener("change", (e)=>{
   selectedFiles = [...e.target.files];
   renderPhotoPreview(selectedFiles, /*existing=*/null);
 });
 
 function resetPhotoUI(existingPhotos = []) {
   selectedFiles = [];
-  $("photos").value = "";
-  $("photoHint").textContent = existingPhotos.length
-    ? `Obstoječe slike: ${existingPhotos.length}. Lahko dodaš nove (dodajo se zraven).`
-    : "Slike so vidne samo, če so naložene preko te aplikacije.";
+  if ($("photos")) $("photos").value = "";
+  if ($("photoHint")) {
+    $("photoHint").textContent = existingPhotos.length
+      ? `Obstoječe slike: ${existingPhotos.length}. Lahko dodaš nove (dodajo se zraven).`
+      : "Slike so vidne samo, če so naložene preko te aplikacije.";
+  }
   renderPhotoPreview([], existingPhotos);
 }
 
 function renderPhotoPreview(newFiles, existingPhotos){
   const wrap = $("photoPreview");
+  if (!wrap) return;
+
   wrap.innerHTML = "";
 
   const ex = Array.isArray(existingPhotos) ? existingPhotos : [];
@@ -300,12 +333,10 @@ function getFilteredEntries(){
 
   let list = entriesCache;
 
-  // filter chip
   if (listFilter === "OPEN") list = list.filter(e => (e.state||"OPEN") === "OPEN");
   if (listFilter === "CLOSED") list = list.filter(e => (e.state||"OPEN") === "CLOSED");
   if (listFilter === "WAIT") list = list.filter(e => (e.status||"") === "CAKA_DELE");
 
-  // search
   if (q) {
     list = list.filter(e=>{
       const blob = [
@@ -320,6 +351,8 @@ function getFilteredEntries(){
 
 function renderEntries(list){
   const wrap = $("entryList");
+  if (!wrap) return;
+
   wrap.innerHTML = "";
   if (!list.length) { wrap.innerHTML = `<div class="muted">Ni vnosov.</div>`; return; }
 
@@ -357,7 +390,6 @@ function renderEntries(list){
     wrap.appendChild(div);
   });
 
-  // edit
   wrap.querySelectorAll("[data-edit]").forEach(b=>{
     b.addEventListener("click", ()=>{
       const id = b.dataset.edit;
@@ -365,8 +397,8 @@ function renderEntries(list){
       if (!e) return;
 
       editingId = id;
-      $("formTitle").textContent = "Urejanje vnosa";
-      $("cancelEditBtn").classList.remove("hidden");
+      if ($("formTitle")) $("formTitle").textContent = "Urejanje vnosa";
+      $("cancelEditBtn")?.classList.remove("hidden");
 
       $("state").value = e.state || "OPEN";
       $("status").value = e.status || "OK";
@@ -380,16 +412,13 @@ function renderEntries(list){
       $("obs").value = e.obs || "";
       $("think").value = e.think || "";
 
-      // pri edit-u: obstoječe slike + možnost dodati nove
-      const existingPhotos = Array.isArray(e.photos) ? e.photos : [];
-      resetPhotoUI(existingPhotos);
+      resetPhotoUI(Array.isArray(e.photos) ? e.photos : []);
 
       showTab("new");
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
   });
 
-  // klik na ime stroja -> profil stroja
   wrap.querySelectorAll(".linkMachine").forEach(el=>{
     el.style.cursor = "pointer";
     el.addEventListener("click", ()=>{
@@ -405,8 +434,8 @@ function renderEntries(list){
 
 function clearForm(){
   editingId = null;
-  $("formTitle").textContent = "Novi vnos";
-  $("cancelEditBtn").classList.add("hidden");
+  if ($("formTitle")) $("formTitle").textContent = "Novi vnos";
+  $("cancelEditBtn")?.classList.add("hidden");
 
   $("state").value = "OPEN";
   $("status").value = "OK";
@@ -421,19 +450,19 @@ function clearForm(){
   $("think").value = "";
 
   resetPhotoUI([]);
-  $("saveMsg").textContent = "";
+  if ($("saveMsg")) $("saveMsg").textContent = "";
 }
 
-$("clearBtn").addEventListener("click", clearForm);
-$("cancelEditBtn").addEventListener("click", clearForm);
+$("clearBtn")?.addEventListener("click", clearForm);
+$("cancelEditBtn")?.addEventListener("click", clearForm);
 
 // save
-$("saveBtn").addEventListener("click", async ()=>{
-  $("saveMsg").textContent = "";
+$("saveBtn")?.addEventListener("click", async ()=>{
+  if ($("saveMsg")) $("saveMsg").textContent = "";
 
   const machine = $("machine").value.trim();
   const work = $("work").value.trim();
-  if (!machine && !work) { $("saveMsg").textContent = "Vpiši vsaj stroj ali opis dela."; return; }
+  if (!machine && !work) { if ($("saveMsg")) $("saveMsg").textContent = "Vpiši vsaj stroj ali opis dela."; return; }
 
   const payload = {
     state: $("state").value,
@@ -458,37 +487,34 @@ $("saveBtn").addEventListener("click", async ()=>{
       const photos = await uploadPhotos(docRef.id, selectedFiles);
       if (photos.length) await updateDoc(doc(db, "entries", docRef.id), { photos });
 
-      $("saveMsg").textContent = "Shranjeno ✅";
+      if ($("saveMsg")) $("saveMsg").textContent = "Shranjeno ✅";
       clearForm();
     } else {
       const entryDoc = doc(db, "entries", editingId);
 
-      // preberi obstoječe fotke, da lahko dodamo nove zraven
       const existing = entriesCache.find(x=>x.id===editingId);
       const existingPhotos = Array.isArray(existing?.photos) ? existing.photos : [];
 
-      // upload novih fotk, append
       const newPhotos = await uploadPhotos(editingId, selectedFiles);
       const merged = existingPhotos.concat(newPhotos);
 
       await updateDoc(entryDoc, { ...payload, photos: merged });
 
-      $("saveMsg").textContent = "Posodobljeno ✅";
+      if ($("saveMsg")) $("saveMsg").textContent = "Posodobljeno ✅";
       clearForm();
     }
 
-    // po shranitvi: osveži list tab če je odprt search/filter
     renderEntries(getFilteredEntries());
     await refreshPreventivaList();
     await refreshMachineProfile();
 
   } catch (e) {
-    $("saveMsg").textContent = "Napaka pri shranjevanju (preveri povezavo in pravila).";
+    if ($("saveMsg")) $("saveMsg").textContent = "Napaka pri shranjevanju (preveri povezavo in pravila).";
   }
 });
 
 // search
-$("search").addEventListener("input", ()=> renderEntries(getFilteredEntries()));
+$("search")?.addEventListener("input", ()=> renderEntries(getFilteredEntries()));
 
 // filter chips
 document.querySelectorAll(".chip").forEach(btn=>{
@@ -506,7 +532,7 @@ function csvEscape(v){
   if (/[,"\n]/.test(s)) return `"${s.replaceAll('"','""')}"`;
   return s;
 }
-$("exportCsvBtn").addEventListener("click", ()=>{
+$("exportCsvBtn")?.addEventListener("click", ()=>{
   const header = ["createdAt","state","status","faultId","machine","work","durationMin","who","mode","materials","obs","think"].join(",");
   const lines = entriesCache.map(e=>{
     return [
@@ -528,17 +554,17 @@ $("exportCsvBtn").addEventListener("click", ()=>{
 });
 
 // PDF: print -> save as PDF
-$("exportPdfBtn").addEventListener("click", ()=>window.print());
+$("exportPdfBtn")?.addEventListener("click", ()=>window.print());
 
 // -------- PREVENTIVA (global) --------
-$("prevDate").value = fmtDateISO(new Date());
+if ($("prevDate")) $("prevDate").value = fmtDateISO(new Date());
 
-$("prevDoneBtn").addEventListener("click", async ()=>{
-  $("prevMsg").textContent = "";
-  const machine = ($("prevMachine").value || "").trim();
-  const d = parseDateInput($("prevDate").value);
-  if (!machine) { $("prevMsg").textContent = "Izberi stroj."; return; }
-  if (!d) { $("prevMsg").textContent = "Izberi datum."; return; }
+$("prevDoneBtn")?.addEventListener("click", async ()=>{
+  if ($("prevMsg")) $("prevMsg").textContent = "";
+  const machine = ($("prevMachine")?.value || "").trim();
+  const d = parseDateInput($("prevDate")?.value);
+  if (!machine) { if ($("prevMsg")) $("prevMsg").textContent = "Izberi stroj."; return; }
+  if (!d) { if ($("prevMsg")) $("prevMsg").textContent = "Izberi datum."; return; }
 
   try{
     await addDoc(collection(db, "services"), {
@@ -547,16 +573,15 @@ $("prevDoneBtn").addEventListener("click", async ()=>{
       date: d.toISOString(),
       createdAt: serverTimestamp()
     });
-    $("prevMsg").textContent = "Zabeleženo ✅";
+    if ($("prevMsg")) $("prevMsg").textContent = "Zabeleženo ✅";
     await refreshPreventivaList();
     await refreshMachineProfile();
   } catch {
-    $("prevMsg").textContent = "Napaka pri shranjevanju preventive.";
+    if ($("prevMsg")) $("prevMsg").textContent = "Napaka pri shranjevanju preventive.";
   }
 });
 
 async function fetchServicesSnapshotOnce(){
-  // enkratni snapshot (hitro + enostavno)
   return await new Promise((resolve)=> {
     const qy = query(collection(db, "services"), orderBy("createdAt","desc"));
     const unsub = onSnapshot(qy, (s)=>{ unsub(); resolve(s); });
@@ -564,10 +589,12 @@ async function fetchServicesSnapshotOnce(){
 }
 
 async function refreshPreventivaList(){
+  if (!$("preventivaList")) return;
+
   if (!machinesCache.length) await loadMachines();
 
   const servicesSnap = await fetchServicesSnapshotOnce();
-  const lastMap = new Map(); // machine -> Date
+  const lastMap = new Map();
   servicesSnap.docs.forEach(d=>{
     const s = d.data();
     if (s.type !== SERVICE_ANNUAL) return;
@@ -614,16 +641,16 @@ async function refreshPreventivaList(){
 }
 
 // -------- MACHINE PROFILE --------
-$("machineJumpToNew").addEventListener("click", ()=> showTab("new"));
+$("machineJumpToNew")?.addEventListener("click", ()=> showTab("new"));
 
-$("machinePrevDate").value = fmtDateISO(new Date());
+if ($("machinePrevDate")) $("machinePrevDate").value = fmtDateISO(new Date());
 
-$("machinePrevDoneBtn").addEventListener("click", async ()=>{
-  $("machinePrevMsg").textContent = "";
-  const machine = ($("machineProfile").value || "").trim();
-  const d = parseDateInput($("machinePrevDate").value);
-  if (!machine) { $("machinePrevMsg").textContent = "Najprej izberi stroj."; return; }
-  if (!d) { $("machinePrevMsg").textContent = "Izberi datum."; return; }
+$("machinePrevDoneBtn")?.addEventListener("click", async ()=>{
+  if ($("machinePrevMsg")) $("machinePrevMsg").textContent = "";
+  const machine = ($("machineProfile")?.value || "").trim();
+  const d = parseDateInput($("machinePrevDate")?.value);
+  if (!machine) { if ($("machinePrevMsg")) $("machinePrevMsg").textContent = "Najprej izberi stroj."; return; }
+  if (!d) { if ($("machinePrevMsg")) $("machinePrevMsg").textContent = "Izberi datum."; return; }
 
   try{
     await addDoc(collection(db, "services"), {
@@ -632,11 +659,11 @@ $("machinePrevDoneBtn").addEventListener("click", async ()=>{
       date: d.toISOString(),
       createdAt: serverTimestamp()
     });
-    $("machinePrevMsg").textContent = "Zabeleženo ✅";
+    if ($("machinePrevMsg")) $("machinePrevMsg").textContent = "Zabeleženo ✅";
     await refreshPreventivaList();
     await refreshMachineProfile();
   } catch {
-    $("machinePrevMsg").textContent = "Napaka pri shranjevanju preventive.";
+    if ($("machinePrevMsg")) $("machinePrevMsg").textContent = "Napaka pri shranjevanju preventive.";
   }
 });
 
@@ -659,9 +686,11 @@ async function getLastAnnualForMachine(machine){
 }
 
 async function refreshMachineProfile(){
-  const machine = ($("machineProfile")?.value || "").trim();
-  const listWrap = $("machineEntries");
   const prevLine = $("machinePrevLine");
+  const listWrap = $("machineEntries");
+  if (!prevLine || !listWrap) return;
+
+  const machine = ($("machineProfile")?.value || "").trim();
 
   if (!machine){
     prevLine.textContent = "Izberi stroj.";
@@ -669,7 +698,6 @@ async function refreshMachineProfile(){
     return;
   }
 
-  // preventiva info
   const last = await getLastAnnualForMachine(machine);
   if (!last){
     prevLine.textContent = "Ni zabeležene letne preventive.";
@@ -680,7 +708,6 @@ async function refreshMachineProfile(){
     prevLine.textContent = `Zadnja: ${fmtDateISO(last)} • Naslednja: ${fmtDateISO(due)} • (${diffDays} dni)`;
   }
 
-  // vnosi za stroj (iz cache - hitro)
   const entries = entriesCache.filter(e => (e.machine || "").trim() === machine);
   if (!entries.length){
     listWrap.innerHTML = `<div class="muted">Ni vnosov za ta stroj.</div>`;
@@ -716,8 +743,8 @@ async function refreshMachineProfile(){
       if (!e) return;
 
       editingId = id;
-      $("formTitle").textContent = "Urejanje vnosa";
-      $("cancelEditBtn").classList.remove("hidden");
+      if ($("formTitle")) $("formTitle").textContent = "Urejanje vnosa";
+      $("cancelEditBtn")?.classList.remove("hidden");
 
       $("state").value = e.state || "OPEN";
       $("status").value = e.status || "OK";
