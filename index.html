@@ -25,19 +25,16 @@
   </div>
 </header>
 
-<!-- ================= LOGIN (PIN) ================= -->
+<!-- ================= LOGIN (BREZ GESLA) ================= -->
 <main id="login" class="card">
   <h2>VZDRŽEVANJE OOK</h2>
-  <p class="muted">Vnesi geslo (PIN) za dostop.</p>
+  <p class="muted">Klikni <b>Vstop</b> za začetek.</p>
 
-  <label class="label">Geslo</label>
-  <input class="input" id="password" type="password" inputmode="numeric" placeholder="••••" />
-
-  <button class="btn" id="loginBtn">Vstop</button>
-  <div class="muted small" id="loginMsg"></div>
+  <button class="btn" id="loginBtn" type="button">Vstop</button>
+  <div class="muted small" id="loginMsg" style="margin-top:8px;"></div>
 
   <div class="muted small" style="margin-top:10px;">
-    Testni PIN: <b>1989</b>
+    (Testna verzija – dostop brez gesla ni varen za produkcijo.)
   </div>
 </main>
 
@@ -56,7 +53,7 @@
   <section class="card tabpanel" id="tab-new">
     <div class="row space">
       <h2 id="formTitle">Novi vnos</h2>
-      <button class="btn ghost hidden" id="cancelEditBtn">Prekliči</button>
+      <button class="btn ghost hidden" id="cancelEditBtn" type="button">Prekliči</button>
     </div>
 
     <div class="grid2">
@@ -219,7 +216,7 @@
 
     <div class="card inner danger">
       <h3>Opozorilo</h3>
-      <p class="muted small">Trenutno je dostop zaščiten samo z lokalnim PIN (1989). To ni varno za produkcijo.</p>
+      <p class="muted small">Dostop je trenutno brez gesla (testno). Za produkcijo dodamo uporabnike in pravice.</p>
     </div>
   </section>
 
