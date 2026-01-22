@@ -71,7 +71,7 @@ textarea.input{resize:vertical}
 }
 .muted{color:var(--muted)}
 .small{font-size:12px}
-.hidden{display:none}
+.hidden{display:none !important;}
 
 .bottomnav{
   position:fixed;bottom:0;left:0;right:0;z-index:60;
