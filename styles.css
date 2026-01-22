@@ -37,8 +37,9 @@ textarea.input{resize:vertical}
 .chips{display:flex;gap:8px;flex-wrap:wrap}
 .chip{padding:8px 10px;border:1px solid var(--line);border-radius:999px;background:#0b1220;color:var(--txt);font-weight:700}
 .chip.on{border-color:var(--acc)}
-/* modal */
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:10px}
-.modalBox{width:min(540px,95vw);max-height:85vh;overflow:auto}
+
+/* modal - stabilno na telefonu */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:10px;z-index:99999}
+.modalBox{width:min(540px,95vw);max-height:85vh;overflow:auto;pointer-events:auto}
 .modalList{display:flex;flex-direction:column;gap:8px}
-.modalItem{padding:12px;border-radius:12px;border:1px solid var(--line);background:#0b1220}
+.modalItem{padding:12px;border-radius:12px;border:1px solid var(--line);background:#0b1220;color:var(--txt);text-align:left}
