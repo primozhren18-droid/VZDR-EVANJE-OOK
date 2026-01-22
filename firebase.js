@@ -1,18 +1,9 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
-import { getStorage } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-storage.js";
-
 const firebaseConfig = {
-  apiKey: "PASTE",
-  authDomain: "PASTE",
-  projectId: "PASTE",
-  storageBucket: "PASTE",
-  messagingSenderId: "PASTE",
-  appId: "PASTE"
+  apiKey: "AIzaSyDwyF6wlKxejpZOdvYea5JF5y5CCzkf_As",
+  authDomain: "vzdr-evanje-ook.firebaseapp.com",
+  projectId: "vzdr-evanje-ook",
+  storageBucket: "vzdr-evanje-ook.firebasestorage.app",
+  messagingSenderId: "116508236756",
+  appId: "1:116508236756:web:9d6870e996f192e6251441",
+  measurementId: "G-LN8TCJTGQM"
 };
-
-export const fbApp = initializeApp(firebaseConfig);
-export const auth = getAuth(fbApp);
-export const db = getFirestore(fbApp);
-export const storage = getStorage(fbApp);
