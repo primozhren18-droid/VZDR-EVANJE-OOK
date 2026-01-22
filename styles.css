@@ -43,3 +43,4 @@ textarea.input{resize:vertical}
 .modalBox{width:min(540px,95vw);max-height:85vh;overflow:auto;pointer-events:auto}
 .modalList{display:flex;flex-direction:column;gap:8px}
 .modalItem{padding:12px;border-radius:12px;border:1px solid var(--line);background:#0b1220;color:var(--txt);text-align:left}
+.modal.hidden{display:none}
