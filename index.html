@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="sl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#111827" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>VZDRŽEVANJE OOK</title>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="title">VZDRŽEVANJE OOK</div>
+      <div class="subtitle" id="todayLine"></div>
+    </div>
+    <button class="btn ghost" id="lockBtn" title="Zakleni">🔒</button>
+  </header>
+
+  <!-- PIN -->
+  <section class="card" id="pinCard">
+    <h2 id="pinTitle">Odkleni</h2>
+    <p class="muted" id="pinHint">Vnesi PIN.</p>
+    <div class="row">
+      <input class="input" id="pinInput" inputmode="numeric" maxlength="12" placeholder="PIN" type="password" />
+      <button class="btn" id="pinBtn">OK</button>
+    </div>
+    <div class="muted small" id="pinMsg"></div>
+  </section>
+
+  <!-- APP -->
+  <main id="app" class="hidden">
+    <nav class="tabs">
+      <button class="tab active" data-tab="new">+ Vnos</button>
+      <button class="tab" data-tab="list">Dnevnik</button>
+      <button class="tab" data-tab="summary">Povzetki</button>
+      <button class="tab" data-tab="settings">Nastavitve</button>
+    </nav>
+
+    <!-- NEW/EDIT ENTRY -->
+    <section class="card tabpanel" id="tab-new">
+      <div class="row space">
+        <h2 id="formTitle">Novi vnos</h2>
+        <button class="btn ghost hidden" id="cancelEditBtn">Prekliči edit</button>
+      </div>
+
+      <label class="label">Stroj / lokacija</label>
+      <div class="row">
+        <input class="input" id="machine" placeholder="npr. NH5000, linija 3, ..." />
+        <button class="btn ghost" id="pickMachineBtn">📋</button>
+      </div>
+      <div class="muted small" id="lastMachineLine"></div>
+
+      <label class="label">Kaj se dela (opis)</label>
+      <textarea class="input" id="work" rows="3" placeholder="npr. menjava cevi, nastavitev senzorja, ..."></textarea>
+
+      <div class="grid2">
+        <div>
+          <label class="label">Status</label>
+          <select class="input" id="status">
+            <option value="OK">OK</option>
+            <option value="NUJNO">NUJNO</option>
+            <option value="CAKA_DELE">ČAKA DELE</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">Trajanje (min)</label>
+          <input class="input" id="duration" inputmode="numeric" placeholder="npr. 45" />
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label class="label">Način</label>
+          <select class="input" id="mode">
+            <option value="SAM">SAM</option>
+            <option value="TIM">TIM</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">Kdo je vodil</label>
+          <select class="input" id="lead"></select>
+        </div>
+      </div>
+
+      <div id="teamWrap" class="hidden">
+        <label class="label">Člani tima</label>
+        <div class="chips" id="teamChips"></div>
+      </div>
+
+      <label class="label">Material (dodaj postavke)</label>
+      <div class="row">
+        <input class="input" id="matName" placeholder="npr. O-ring, cev 8mm, olje..." />
+        <input class="input smallw" id="matQty" inputmode="decimal" placeholder="količina" />
+        <input class="input smallw" id="matUnit" placeholder="enota" value="kos" />
+        <button class="btn ghost" id="addMatBtn">+ Dodaj</button>
+      </div>
+      <div class="list" id="matList"></div>
+
+      <label class="label">Opazke na stroju</label>
+      <textarea class="input" id="obs" rows="2" placeholder="simptomi, stanje, ..."></textarea>
+
+      <label class="label">Moje razmišljanje (vzrok / predlog)</label>
+      <textarea class="input" id="think" rows="2" placeholder="kaj mislim da je vzrok, kaj preveriti naslednjič..."></textarea>
+
+      <label class="label">Slike</label>
+      <input class="input" id="photos" type="file" accept="image/*" capture="environment" multiple />
+      <div class="photoRow" id="photoPreview"></div>
+
+      <div class="row space">
+        <button class="btn" id="saveBtn">Shrani</button>
+        <button class="btn ghost" id="clearBtn">Počisti</button>
+      </div>
+
+      <div class="muted small" id="saveMsg"></div>
+    </section>
+
+    <!-- LIST -->
+    <section class="card tabpanel hidden" id="tab-list">
+      <div class="row space">
+        <h2>Dnevnik</h2>
+        <button class="btn ghost" id="exportCsvBtn">CSV</button>
+      </div>
+
+      <div class="row">
+        <input class="input" id="search" placeholder="Išči (stroj, opis, material)..." />
+        <button class="btn ghost" id="exportMonthBtn">PDF ta mesec</button>
+      </div>
+      <div class="list" id="entryList"></div>
+    </section>
+
+    <!-- SUMMARY -->
+    <section class="card tabpanel hidden" id="tab-summary">
+      <div class="row space">
+        <h2>Povzetki</h2>
+        <button class="btn ghost" id="copySummaryBtn">Kopiraj</button>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label class="label">Mesec</label>
+          <input class="input" id="monthPick" type="month" />
+          <button class="btn" id="monthSummaryBtn">Mesečni povzetek</button>
+        </div>
+        <div>
+          <label class="label">Leto</label>
+          <input class="input" id="yearPick" type="number" min="2020" max="2100" />
+          <button class="btn" id="yearSummaryBtn">Letni povzetek</button>
+        </div>
+      </div>
+
+      <div class="card inner" id="summaryBox"></div>
+
+      <div class="row space">
+        <button class="btn ghost" id="printSummaryBtn">Natisni (PDF)</button>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="card tabpanel hidden" id="tab-settings">
+      <h2>Nastavitve</h2>
+      <p class="muted">Vse se shranjuje lokalno na telefonu (offline).</p>
+
+      <div class="card inner">
+        <h3>PIN</h3>
+        <div class="row">
+          <input class="input" id="newPin" inputmode="numeric" placeholder="Nov PIN" type="password" />
+          <button class="btn" id="setPinBtn">Shrani PIN</button>
+        </div>
+        <div class="muted small" id="pinSetMsg"></div>
+      </div>
+
+      <div class="card inner">
+        <h3>Imena v ekipi</h3>
+        <div class="grid2">
+          <div>
+            <label class="label">JAZ</label>
+            <input class="input" id="nameMe" />
+          </div>
+          <div>
+            <label class="label">Sodelavec 1</label>
+            <input class="input" id="name1" />
+          </div>
+          <div>
+            <label class="label">Sodelavec 2</label>
+            <input class="input" id="name2" />
+          </div>
+          <div>
+            <label class="label">Sodelavec 3</label>
+            <input class="input" id="name3" />
+          </div>
+        </div>
+        <button class="btn" id="saveNamesBtn">Shrani imena</button>
+        <div class="muted small" id="namesMsg"></div>
+      </div>
+
+      <div class="card inner">
+        <h3>Seznam strojev (hitri izbor)</h3>
+        <p class="muted small">Vsaka vrstica = en stroj/lokacija.</p>
+        <textarea class="input" id="machinesList" rows="6" placeholder="NH5000&#10;DZ15&#10;Linija 3"></textarea>
+        <button class="btn" id="saveMachinesBtn">Shrani seznam</button>
+        <div class="muted small" id="machinesMsg"></div>
+      </div>
+
+      <div class="card inner danger">
+        <h3>Brisanje podatkov</h3>
+        <p class="muted small">Nepovratno pobriše vse vnose na telefonu.</p>
+        <button class="btn danger" id="wipeBtn">Pobriši vse</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- simple modal -->
+  <div id="modal" class="modal hidden">
+    <div class="modalBox card">
+      <div class="row space">
+        <h3 id="modalTitle">Izbira</h3>
+        <button class="btn ghost" id="modalClose">✖</button>
+      </div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
