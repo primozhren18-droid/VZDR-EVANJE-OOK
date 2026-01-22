@@ -7,7 +7,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyDwyF6wLkxeipZ0dyYea5JF5y5Cczkf_As",
   authDomain: "vzdr-evanje-ook.firebaseapp.com",
   projectId: "vzdr-evanje-ook",
-  storageBucket: "vzdr-evanje-ook.firebasestorage.app",
+  storageBucket: "vzdr-evanje-ook.appspot.com", 
   messagingSenderId: "116508236756",
   appId: "1:116508236756:web:9d6870e996f192e6251441"
 };
