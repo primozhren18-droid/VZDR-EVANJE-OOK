@@ -1,7 +1,14 @@
-import { putEntry, getAllEntries, getEntry, deleteEntry, wipeAll, getMeta, setMeta } from "./db.js";
+import {
+  putEntry, getAllEntries, getEntry, deleteEntry,
+  wipeAll, getMeta, setMeta,
+  putShift, getAllShifts,
+  putVisit, getAllVisits,
+  putService, getAllServices
+} from "./db.js";
 
 const $ = (id) => document.getElementById(id);
 
+// ---- UI refs ----
 const app = $("app");
 const pinCard = $("pinCard");
 const pinInput = $("pinInput");
@@ -22,11 +29,13 @@ const modalTitle = $("modalTitle");
 const modalBody = $("modalBody");
 const modalClose = $("modalClose");
 
+// ---- State ----
 let mats = [];
 let photos = [];
 let teamSel = new Set();
-
 let editingId = null;
+
+const SERVICE_ANNUAL = "ANNUAL_PREVENTIVE";
 
 const DEFAULT_NAMES = {
   ME: "HREN PRIMOŽ",
@@ -35,6 +44,14 @@ const DEFAULT_NAMES = {
   SODELAVEC_3: "SODELAVEC 3",
 };
 
+const DEFAULT_MACHINES = [
+  "20141 FPZ UNIOR 1",
+  "20142 FPZ UNIOR 2",
+  "20146 FPZ UNIOR 3",
+  "20170 UNIFLEX",
+];
+
+// ---- Helpers ----
 function nowISO() { return new Date().toISOString(); }
 function fmtDT(iso){
   const d = new Date(iso);
@@ -42,11 +59,31 @@ function fmtDT(iso){
 }
 function monthKeyFromISO(iso){
   const d = new Date(iso);
-  const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,"0");
-  return `${y}-${m}`;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
 }
 function yearFromISO(iso){ return new Date(iso).getFullYear(); }
+
+function escapeHtml(s){
+  return (s ?? "").toString().replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[c]));
+}
+
+function statusBadgeClass(s){
+  if (s==="NUJNO") return "urgent";
+  if (s==="CAKA_DELE") return "wait";
+  return "ok";
+}
+function statusLabel(s){
+  if (s==="NUJNO") return "NUJNO";
+  if (s==="CAKA_DELE") return "ČAKA DELE";
+  return "OK";
+}
+function minsToHM(mins){
+  const m = Number(mins)||0;
+  const h = Math.floor(m/60);
+  const r = m%60;
+  if (h<=0) return `${r} min`;
+  return `${h} h ${r} min`;
+}
 
 async function sha256(str){
   const enc = new TextEncoder().encode(str);
@@ -67,71 +104,82 @@ function setTodayLine(){
 
 function showTab(name){
   document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active", b.dataset.tab===name));
-  ["new","list","summary","settings"].forEach(t=>{
+  ["new","list","shift","preventiva","summary","settings"].forEach(t=>{
     $("tab-"+t).classList.toggle("hidden", t!==name);
   });
 }
 
-function escapeHtml(s){
-  return (s ?? "").toString().replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[c]));
-}
-
-function statusBadgeClass(s){
-  if (s==="NUJNO") return "urgent";
-  if (s==="CAKA_DELE") return "wait";
-  return "ok";
-}
-function statusLabel(s){
-  if (s==="NUJNO") return "NUJNO";
-  if (s==="CAKA_DELE") return "ČAKA DELE";
-  return "OK";
-}
-
-function minsToHM(mins){
-  const m = Number(mins)||0;
-  const h = Math.floor(m/60);
-  const r = m%60;
-  if (h<=0) return `${r} min`;
-  return `${h} h ${r} min`;
-}
-
+// ---- Meta helpers ----
 async function getNames(){
   const saved = await getMeta("names");
   return { ...DEFAULT_NAMES, ...(saved || {}) };
 }
-
-async function setNames(obj){
-  await setMeta("names", obj);
-}
+async function setNames(obj){ await setMeta("names", obj); }
 
 async function getMachines(){
   const saved = await getMeta("machines");
-  if (Array.isArray(saved)) return saved;
-  return [];
+  return Array.isArray(saved) ? saved : [];
+}
+async function setMachines(list){ await setMeta("machines", list); }
+
+async function ensureDefaultMachines() {
+  const current = await getMachines();
+  if (current.length) return;
+  await setMachines(DEFAULT_MACHINES);
 }
 
-async function setMachines(list){
-  await setMeta("machines", list);
+async function setLastMachine(val){ await setMeta("lastMachine", val || ""); }
+async function getLastMachine(){ return (await getMeta("lastMachine")) || ""; }
+
+// ---- Modal ----
+function openModal(title, bodyNode){
+  modalTitle.textContent = title;
+  modalBody.innerHTML = "";
+  modalBody.appendChild(bodyNode);
+  modal.classList.remove("hidden");
+}
+function closeModal(){ modal.classList.add("hidden"); }
+
+// ---- Picker (fix: če ni strojev, ne odpri modala) ----
+async function showMachinesPicker(targetInputId){
+  const machines = await getMachines();
+  if (!machines.length) {
+    alert("Najprej dodaj seznam strojev v Nastavitvah.");
+    return;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "modalList";
+
+  machines.forEach(m=>{
+    const b = document.createElement("button");
+    b.className = "modalItem";
+    b.textContent = m;
+    b.addEventListener("click", async ()=>{
+      $(targetInputId).value = m;
+      if (targetInputId === "machine") {
+        await setLastMachine(m);
+        await refreshLastMachineLine();
+      }
+      closeModal();
+    });
+    wrap.appendChild(b);
+  });
+
+  openModal("Izberi stroj", wrap);
 }
 
-async function setLastMachine(val){
-  await setMeta("lastMachine", val || "");
-}
-async function getLastMachine(){
-  return (await getMeta("lastMachine")) || "";
-}
-
+// ---- Leads/team ----
 async function renderLeadOptions(){
   const names = await getNames();
   const sel = $("lead");
   sel.innerHTML = "";
-  const opts = [
+  [
     { key:"ME", label:names.ME },
     { key:"SODELAVEC_1", label:names.SODELAVEC_1 },
     { key:"SODELAVEC_2", label:names.SODELAVEC_2 },
     { key:"SODELAVEC_3", label:names.SODELAVEC_3 },
-  ];
-  opts.forEach(o=>{
+  ].forEach(o=>{
     const opt = document.createElement("option");
     opt.value = o.key;
     opt.textContent = o.label;
@@ -160,6 +208,7 @@ async function renderTeamChips(){
   });
 }
 
+// ---- Materials/photos ----
 function renderMats(){
   matList.innerHTML = "";
   if (!mats.length){ matList.innerHTML = `<div class="muted small">Ni dodanega materiala.</div>`; return; }
@@ -199,6 +248,16 @@ function renderPhotoPreview(){
   if (!photos.length) photoPreview.innerHTML = `<div class="muted small">Ni dodanih slik.</div>`;
 }
 
+function fileToDataUrl(file){
+  return new Promise((resolve, reject)=>{
+    const r = new FileReader();
+    r.onload = ()=>resolve(r.result);
+    r.onerror = ()=>reject(r.error);
+    r.readAsDataURL(file);
+  });
+}
+
+// ---- PIN ----
 async function isUnlocked(){ return (await getMeta("unlocked")) === true; }
 
 async function lock(){
@@ -225,13 +284,58 @@ async function unlockFlow(pin){
   return { ok:false };
 }
 
-async function showApp(){
-  pinCard.classList.add("hidden");
-  app.classList.remove("hidden");
-  showTab("new");
-  await refreshList();
-  await refreshSummaryDefaults();
-  await loadSettingsToUI();
+// ---- StepCounter (približno) ----
+class StepCounter {
+  constructor(onUpdate) {
+    this.onUpdate = onUpdate;
+    this.steps = 0;
+    this.running = false;
+    this._lastPeakAt = 0;
+    this._handler = this._onMotion.bind(this);
+    this.THRESH = 11.7;
+    this.MIN_GAP = 280;
+  }
+  async start() {
+    if (this.running) return;
+    try {
+      if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+        const res = await DeviceMotionEvent.requestPermission();
+        if (res !== "granted") throw new Error("Motion permission not granted");
+      }
+    } catch {}
+    window.addEventListener("devicemotion", this._handler, { passive: true });
+    this.running = true;
+  }
+  stop() {
+    if (!this.running) return;
+    window.removeEventListener("devicemotion", this._handler);
+    this.running = false;
+  }
+  reset() {
+    this.steps = 0;
+    this.onUpdate?.(this.steps);
+  }
+  setSteps(n) {
+    this.steps = Math.max(0, Number(n) || 0);
+    this.onUpdate?.(this.steps);
+  }
+  _onMotion(e) {
+    const a = e.accelerationIncludingGravity;
+    if (!a) return;
+    const mag = Math.sqrt((a.x||0)**2 + (a.y||0)**2 + (a.z||0)**2);
+    const now = Date.now();
+    if (mag > this.THRESH && (now - this._lastPeakAt) > this.MIN_GAP) {
+      this._lastPeakAt = now;
+      this.steps += 1;
+      this.onUpdate?.(this.steps);
+    }
+  }
+}
+
+// ---- Form ----
+async function refreshLastMachineLine(){
+  const last = await getLastMachine();
+  $("lastMachineLine").textContent = last ? `Zadnji stroj: ${last}` : "";
 }
 
 function clearForm(){
@@ -258,51 +362,7 @@ function clearForm(){
   $("saveMsg").textContent = "";
 }
 
-function openModal(title, bodyNode){
-  modalTitle.textContent = title;
-  modalBody.innerHTML = "";
-  modalBody.appendChild(bodyNode);
-  modal.classList.remove("hidden");
-}
-function closeModal(){
-  modal.classList.add("hidden");
-}
-
-async function refreshLastMachineLine(){
-  const last = await getLastMachine();
-  $("lastMachineLine").textContent = last ? `Zadnji stroj: ${last}` : "";
-}
-
-/**
- * FIX: Če ni seznama strojev, sploh ne odpri modala.
- * Namesto tega pokaži alert.
- */
-async function showMachinesPicker(){
-  const machines = await getMachines();
-  if (!machines.length) {
-    alert("Najprej dodaj seznam strojev v Nastavitvah.");
-    return;
-  }
-
-  const wrap = document.createElement("div");
-  wrap.className = "modalList";
-
-  machines.forEach(m=>{
-    const b = document.createElement("button");
-    b.className = "modalItem";
-    b.textContent = m;
-    b.addEventListener("click", async ()=>{
-      $("machine").value = m;
-      await setLastMachine(m);
-      await refreshLastMachineLine();
-      closeModal();
-    });
-    wrap.appendChild(b);
-  });
-
-  openModal("Izberi stroj", wrap);
-}
-
+// ---- List ----
 async function refreshList(){
   const entriesAll = (await getAllEntries()).sort((a,b)=> (b.createdAt||"").localeCompare(a.createdAt||""));
   const q = ($("search").value || "").trim().toLowerCase();
@@ -329,17 +389,21 @@ async function refreshList(){
 
     const modeBadge = e.mode === "SAM" ? "SAM" : "TIM";
     const leadLabel = names[e.lead] || e.lead;
-
     const teamLabels = (e.team||[]).map(k=>names[k]||k).join(", ");
     const teamLine = e.mode==="TIM" ? `<div class="muted small">Tim: ${escapeHtml(teamLabels || "—")}</div>` : "";
-
     const durLine = (Number(e.durationMin)||0) ? `<span class="badge">${minsToHM(e.durationMin)}</span>` : "";
     const sClass = statusBadgeClass(e.status);
 
     div.innerHTML = `
       <div class="itemTop">
         <div>
-          <div class="muted small">${fmtDT(e.createdAt)} • <span class="badge">${modeBadge}</span> • <span class="badge">Vodil: ${escapeHtml(leadLabel)}</span> • <span class="badge ${sClass}">${statusLabel(e.status)}</span> ${durLine}</div>
+          <div class="muted small">
+            ${fmtDT(e.createdAt)} •
+            <span class="badge">${modeBadge}</span> •
+            <span class="badge">Vodil: ${escapeHtml(leadLabel)}</span> •
+            <span class="badge ${sClass}">${statusLabel(e.status)}</span>
+            ${durLine}
+          </div>
           <div><b>${escapeHtml(e.machine || "—")}</b></div>
           <div>${escapeHtml(e.work || "")}</div>
           ${teamLine}
@@ -370,48 +434,43 @@ async function refreshList(){
 
   wrap.querySelectorAll("[data-edit]").forEach(b=>{
     b.addEventListener("click", async ()=>{
-      await startEdit(b.dataset.edit);
+      const e = await getEntry(b.dataset.edit);
+      if (!e) return;
+      editingId = e.id;
+
+      $("formTitle").textContent = "Urejanje vnosa";
+      $("cancelEditBtn").classList.remove("hidden");
+
+      $("machine").value = e.machine || "";
+      $("work").value = e.work || "";
+      $("obs").value = e.obs || "";
+      $("think").value = e.think || "";
+      $("status").value = e.status || "OK";
+      $("duration").value = (e.durationMin ?? "").toString();
+      $("mode").value = e.mode || "SAM";
+      $("lead").value = e.lead || "ME";
+
+      mats = Array.isArray(e.materials) ? [...e.materials] : [];
+      photos = Array.isArray(e.photos) ? [...e.photos] : [];
+      teamSel = new Set(Array.isArray(e.team) ? e.team : []);
+
+      teamWrap.classList.toggle("hidden", $("mode").value !== "TIM");
+      if ($("mode").value === "TIM" && teamSel.size === 0) teamSel.add("ME");
+
+      renderMats();
+      renderPhotoPreview();
+      await renderTeamChips();
+      showTab("new");
+      $("saveMsg").textContent = "Urejaš obstoječ vnos.";
     });
   });
 }
 
-async function startEdit(id){
-  const e = await getEntry(id);
-  if (!e) return;
-  editingId = id;
-
-  $("formTitle").textContent = "Urejanje vnosa";
-  $("cancelEditBtn").classList.remove("hidden");
-
-  $("machine").value = e.machine || "";
-  $("work").value = e.work || "";
-  $("obs").value = e.obs || "";
-  $("think").value = e.think || "";
-  $("status").value = e.status || "OK";
-  $("duration").value = (e.durationMin ?? "").toString();
-  $("mode").value = e.mode || "SAM";
-  $("lead").value = e.lead || "ME";
-
-  mats = Array.isArray(e.materials) ? [...e.materials] : [];
-  photos = Array.isArray(e.photos) ? [...e.photos] : [];
-  teamSel = new Set(Array.isArray(e.team) ? e.team : []);
-
-  teamWrap.classList.toggle("hidden", $("mode").value !== "TIM");
-  if ($("mode").value === "TIM" && teamSel.size === 0) teamSel.add("ME");
-
-  renderMats();
-  renderPhotoPreview();
-  await renderTeamChips();
-
-  showTab("new");
-  $("saveMsg").textContent = "Urejaš obstoječ vnos.";
-}
-
+// ---- Summary ----
 function computeSummary(entries){
   const total = entries.length;
   const sam = entries.filter(e=>e.mode==="SAM").length;
   const tim = total - sam;
-
   const urgent = entries.filter(e=>e.status==="NUJNO").length;
   const wait = entries.filter(e=>e.status==="CAKA_DELE").length;
 
@@ -421,19 +480,14 @@ function computeSummary(entries){
 
   const byMachine = new Map();
   const byMaterial = new Map();
-  const byLead = new Map();
-
   for (const e of entries){
     const m = (e.machine||"—").trim() || "—";
     byMachine.set(m, (byMachine.get(m)||0) + 1);
-    byLead.set(e.lead||"—", (byLead.get(e.lead||"—")||0) + 1);
-
     for (const it of (e.materials||[])){
       const key = (it.name||"—").trim() || "—";
       byMaterial.set(key, (byMaterial.get(key)||0) + 1);
     }
   }
-
   const top = (map) => [...map.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5);
 
   return {
@@ -441,36 +495,11 @@ function computeSummary(entries){
     minutesTotal, minutesSam, minutesTim,
     topMachines: top(byMachine),
     topMaterials: top(byMaterial),
-    topLead: top(byLead),
   };
 }
 
-function summaryToText(title, s, names){
-  const topMachines = s.topMachines.length ? s.topMachines.map(([k,v])=>`${k} (${v})`).join(", ") : "—";
-  const topMaterials = s.topMaterials.length ? s.topMaterials.map(([k,v])=>`${k} (${v})`).join(", ") : "—";
-  const topLead = s.topLead.length ? s.topLead.map(([k,v])=>`${names[k]||k} (${v})`).join(", ") : "—";
-
-  return [
-    title,
-    `Skupaj vnosov: ${s.total}`,
-    `SAM: ${s.sam} | TIM: ${s.tim}`,
-    `NUJNO: ${s.urgent} | ČAKA DELE: ${s.wait}`,
-    `Čas skupaj: ${minsToHM(s.minutesTotal)} (SAM: ${minsToHM(s.minutesSam)} | TIM: ${minsToHM(s.minutesTim)})`,
-    `Top stroji/lokacije: ${topMachines}`,
-    `Top materiali: ${topMaterials}`,
-    `Največ vodil: ${topLead}`,
-    ``,
-    `Argumenti za višjo plačo (osnova):`,
-    `- dokazano št. intervencij + sledljivost`,
-    `- delež samostojnega dela (SAM) + prevzem vodenja`,
-    `- ponavljajoči se problemi po strojih → predlogi izboljšav`,
-    `- evidenca porabljenega materiala + časa`,
-  ].join("\n");
-}
-
-function renderSummaryBox(title, s, names){
-  const box = $("summaryBox");
-  box.innerHTML = `
+function renderSummaryBox(title, s){
+  $("summaryBox").innerHTML = `
     <h3>${escapeHtml(title)}</h3>
     <div class="list">
       <div class="item"><b>Skupaj vnosov:</b> ${s.total}</div>
@@ -484,13 +513,17 @@ function renderSummaryBox(title, s, names){
       </div>
 
       <div class="item">
-        <b>Top materiali (po pojavnosti):</b>
+        <b>Top materiali:</b>
         <div class="muted small">${s.topMaterials.length ? s.topMaterials.map(([k,v])=>`${escapeHtml(k)} (${v})`).join(", ") : "—"}</div>
       </div>
 
       <div class="item">
-        <b>Največ vodil:</b>
-        <div class="muted small">${s.topLead.length ? s.topLead.map(([k,v])=>`${escapeHtml(names[k]||k)} (${v})`).join(", ") : "—"}</div>
+        <b>Argumenti za višjo plačo (osnova):</b>
+        <div class="muted small">
+          • št. intervencij + sledljivost<br/>
+          • delež samostojnega dela (SAM) + prevzem vodenja<br/>
+          • evidenca porabljenega materiala + časa
+        </div>
       </div>
     </div>
   `;
@@ -503,37 +536,25 @@ async function refreshSummaryDefaults(){
   $("summaryBox").innerHTML = `<div class="muted">Izberi mesec ali leto.</div>`;
 }
 
-function printCurrent(){ window.print(); }
-
+// ---- CSV ----
 function csvEscape(v){
   const s = (v ?? "").toString();
   if (/[,"\n]/.test(s)) return `"${s.replaceAll('"','""')}"`;
   return s;
 }
-
 async function exportCSV(){
   const names = await getNames();
   const entries = (await getAllEntries()).sort((a,b)=> (a.createdAt||"").localeCompare(b.createdAt||""));
 
-  const header = [
-    "createdAt","machine","work","status","durationMin","mode","lead","team","materials","obs","think"
-  ].join(",");
+  const header = ["createdAt","machine","work","status","durationMin","mode","lead","team","materials","obs","think"].join(",");
 
   const lines = entries.map(e=>{
     const team = (e.team||[]).map(k=>names[k]||k).join(" | ");
     const materials = (e.materials||[]).map(m=>`${m.name}=${m.qty} ${m.unit}`).join(" | ");
     return [
-      e.createdAt,
-      e.machine,
-      e.work,
-      statusLabel(e.status),
-      (e.durationMin ?? ""),
-      e.mode,
-      (names[e.lead]||e.lead),
-      team,
-      materials,
-      e.obs,
-      e.think
+      e.createdAt, e.machine, e.work, statusLabel(e.status),
+      (e.durationMin ?? ""), e.mode, (names[e.lead]||e.lead),
+      team, materials, e.obs, e.think
     ].map(csvEscape).join(",");
   });
 
@@ -548,6 +569,86 @@ async function exportCSV(){
   URL.revokeObjectURL(url);
 }
 
+// ---- Preventiva 1x letno ----
+function addDays(date, days){
+  const d = new Date(date);
+  d.setDate(d.getDate()+days);
+  return d;
+}
+function fmtDateISO(d){
+  const x = new Date(d);
+  const yyyy = x.getFullYear();
+  const mm = String(x.getMonth()+1).padStart(2,"0");
+  const dd = String(x.getDate()).padStart(2,"0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+function parseDateInput(v){
+  // v = "YYYY-MM-DD"
+  if (!v) return null;
+  const d = new Date(v+"T00:00:00");
+  return isNaN(d.getTime()) ? null : d;
+}
+
+async function getLastAnnualServiceByMachine() {
+  const services = await getAllServices();
+  const map = new Map(); // machine -> Date
+  for (const s of services) {
+    if (s.type !== SERVICE_ANNUAL) continue;
+    const d = new Date(s.date);
+    if (isNaN(d.getTime())) continue;
+    const prev = map.get(s.machine);
+    if (!prev || d > prev) map.set(s.machine, d);
+  }
+  return map;
+}
+
+async function refreshPreventivaList(){
+  const machines = await getMachines();
+  const lastMap = await getLastAnnualServiceByMachine();
+  const wrap = $("preventivaList");
+  wrap.innerHTML = "";
+
+  const today = new Date();
+  const soonThresholdDays = 30;
+
+  if (!machines.length) {
+    wrap.innerHTML = `<div class="muted">Ni strojev. Dodaj v Nastavitve.</div>`;
+    return;
+  }
+
+  machines.forEach(m=>{
+    const last = lastMap.get(m) || null;
+    const due = last ? addDays(last, 365) : null;
+
+    let status = "ZAMUJENO";
+    let badgeClass = "urgent";
+    let line = "Ni zabeležene letne preventive.";
+
+    if (due) {
+      const diffDays = Math.floor((due - today) / (1000*60*60*24));
+      if (diffDays >= soonThresholdDays) { status = "OK"; badgeClass = "ok"; }
+      else if (diffDays >= 0) { status = "KMALU"; badgeClass = "wait"; }
+      else { status = "ZAMUJENO"; badgeClass = "urgent"; }
+
+      line = `Zadnja: ${fmtDateISO(last)} • Naslednja: ${fmtDateISO(due)} • (${diffDays} dni)`;
+    }
+
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `
+      <div class="itemTop">
+        <div>
+          <div><b>${escapeHtml(m)}</b></div>
+          <div class="muted small">${escapeHtml(line)}</div>
+        </div>
+        <div><span class="badge ${badgeClass}">${status}</span></div>
+      </div>
+    `;
+    wrap.appendChild(div);
+  });
+}
+
+// ---- Settings load ----
 async function loadSettingsToUI(){
   const names = await getNames();
   $("nameMe").value = names.ME;
@@ -562,47 +663,61 @@ async function loadSettingsToUI(){
   await renderTeamChips();
 
   if (!$("lead").value) $("lead").value = "ME";
-
   await refreshLastMachineLine();
+
+  // default date for preventiva input = today
+  const today = new Date();
+  $("prevDate").value = fmtDateISO(today);
+
+  await refreshPreventivaList();
 }
 
-function fileToDataUrl(file){
-  return new Promise((resolve, reject)=>{
-    const r = new FileReader();
-    r.onload = ()=>resolve(r.result);
-    r.onerror = ()=>reject(r.error);
-    r.readAsDataURL(file);
-  });
+// ---- Main ----
+async function showApp(){
+  pinCard.classList.add("hidden");
+  app.classList.remove("hidden");
+  showTab("new");
+  await refreshList();
+  await refreshSummaryDefaults();
+  await loadSettingsToUI();
 }
 
 async function main(){
   setTodayLine();
   await ensureSW();
 
-  // modal
+  // modal close
   modalClose.addEventListener("click", closeModal);
   modal.addEventListener("click", (e)=>{ if (e.target === modal) closeModal(); });
 
   // tabs
   document.querySelectorAll(".tab").forEach(b=>{
-    b.addEventListener("click", ()=>showTab(b.dataset.tab));
+    b.addEventListener("click", async ()=>{
+      showTab(b.dataset.tab);
+      if (b.dataset.tab === "preventiva") await refreshPreventivaList();
+    });
   });
 
   // lock
   lockBtn.addEventListener("click", lock);
+
+  // Ensure default machines exist (very important)
+  await ensureDefaultMachines();
 
   // mode toggle
   $("mode").addEventListener("change", async ()=>{
     const isTeam = $("mode").value === "TIM";
     teamWrap.classList.toggle("hidden", !isTeam);
     if (isTeam && teamSel.size===0){
-      teamSel = new Set(["ME"]);
+      teamSel = new Set(["ME"]); // izberem vsakič, vsaj jaz označen
       await renderTeamChips();
     }
   });
 
-  // pick machine
-  $("pickMachineBtn").addEventListener("click", showMachinesPicker);
+  // machine pickers
+  $("pickMachineBtn").addEventListener("click", ()=>showMachinesPicker("machine"));
+  $("visitPickBtn").addEventListener("click", ()=>showMachinesPicker("visitMachine"));
+  $("prevPickBtn").addEventListener("click", ()=>showMachinesPicker("prevMachine"));
 
   // add material
   $("addMatBtn").addEventListener("click", ()=>{
@@ -626,11 +741,10 @@ async function main(){
     e.target.value = "";
   });
 
-  // save
+  // save entry
   $("saveBtn").addEventListener("click", async ()=>{
     const machine = $("machine").value.trim();
     const work = $("work").value.trim();
-
     if (!machine && !work){
       $("saveMsg").textContent = "Vpiši vsaj stroj ali opis dela.";
       return;
@@ -657,8 +771,10 @@ async function main(){
     };
 
     await putEntry(entry);
-    await setLastMachine(machine);
-    await refreshLastMachineLine();
+    if (machine) {
+      await setLastMachine(machine);
+      await refreshLastMachineLine();
+    }
 
     $("saveMsg").textContent = editingId ? "Posodobljeno ✅" : "Shranjeno ✅";
     clearForm();
@@ -668,48 +784,35 @@ async function main(){
   $("clearBtn").addEventListener("click", clearForm);
   $("cancelEditBtn").addEventListener("click", clearForm);
 
-  // search
   $("search").addEventListener("input", refreshList);
 
-  // summaries
+  // summary buttons
   let lastSummaryText = "";
   $("monthSummaryBtn").addEventListener("click", async ()=>{
     const mk = $("monthPick").value;
-    const names = await getNames();
     const entries = (await getAllEntries()).filter(e=>monthKeyFromISO(e.createdAt)===mk);
     const s = computeSummary(entries);
     const title = `Mesečni povzetek: ${mk}`;
-    renderSummaryBox(title, s, names);
-    lastSummaryText = summaryToText(title, s, names);
+    renderSummaryBox(title, s);
+    lastSummaryText = `${title}\nSkupaj: ${s.total}\nSAM: ${s.sam} | TIM: ${s.tim}\nNUJNO: ${s.urgent} | ČAKA DELE: ${s.wait}\nČas: ${minsToHM(s.minutesTotal)}`;
   });
 
   $("yearSummaryBtn").addEventListener("click", async ()=>{
     const y = Number($("yearPick").value);
-    const names = await getNames();
     const entries = (await getAllEntries()).filter(e=>yearFromISO(e.createdAt)===y);
     const s = computeSummary(entries);
     const title = `Letni povzetek: ${y}`;
-    renderSummaryBox(title, s, names);
-    lastSummaryText = summaryToText(title, s, names);
+    renderSummaryBox(title, s);
+    lastSummaryText = `${title}\nSkupaj: ${s.total}\nSAM: ${s.sam} | TIM: ${s.tim}\nNUJNO: ${s.urgent} | ČAKA DELE: ${s.wait}\nČas: ${minsToHM(s.minutesTotal)}`;
   });
 
   $("copySummaryBtn").addEventListener("click", async ()=>{
-    if (!lastSummaryText) {
-      alert("Najprej ustvari povzetek (mesec ali leto).");
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(lastSummaryText);
-      alert("Povzetek kopiran ✅");
-    } catch {
-      alert("Kopiranje ni uspelo (odpri v Chrome in poskusi znova).");
-    }
+    if (!lastSummaryText) { alert("Najprej ustvari povzetek (mesec ali leto)."); return; }
+    try { await navigator.clipboard.writeText(lastSummaryText); alert("Povzetek kopiran ✅"); }
+    catch { alert("Kopiranje ni uspelo (odpri v Chrome)."); }
   });
 
-  // print
   $("printSummaryBtn").addEventListener("click", ()=>window.print());
-
-  // export month to pdf quickly
   $("exportMonthBtn").addEventListener("click", async ()=>{
     showTab("summary");
     await new Promise(r=>setTimeout(r,50));
@@ -718,7 +821,6 @@ async function main(){
     window.print();
   });
 
-  // CSV
   $("exportCsvBtn").addEventListener("click", exportCSV);
 
   // settings PIN
@@ -745,12 +847,10 @@ async function main(){
 
   // settings machines
   $("saveMachinesBtn").addEventListener("click", async ()=>{
-    const lines = ($("machinesList").value || "")
-      .split("\n")
-      .map(s=>s.trim())
-      .filter(Boolean);
+    const lines = ($("machinesList").value || "").split("\n").map(s=>s.trim()).filter(Boolean);
     await setMachines(lines);
     $("machinesMsg").textContent = "Seznam strojev shranjen ✅";
+    await refreshPreventivaList();
   });
 
   // wipe
@@ -762,7 +862,133 @@ async function main(){
     }
   });
 
-  // PIN logic
+  // ---- SHIFT + STEPS + VISITS ----
+  const stepCountEl = $("stepCount");
+  const shiftStatusEl = $("shiftStatus");
+  const visitStatusEl = $("visitStatus");
+
+  const stepCounter = new StepCounter((n)=>{ if (stepCountEl) stepCountEl.textContent = String(n); });
+
+  let activeShift = await getMeta("activeShift") || null;
+  let activeVisit = await getMeta("activeVisit") || null;
+
+  function renderShiftUI() {
+    if (shiftStatusEl) {
+      if (!activeShift) shiftStatusEl.innerHTML = "<b>Ni aktivne izmene.</b>";
+      else shiftStatusEl.innerHTML = `<b>Aktivna izmena</b> (start: ${fmtDT(activeShift.startAt)})`;
+    }
+    if (visitStatusEl) {
+      if (!activeVisit) visitStatusEl.textContent = "Ni aktivnega obiska stroja.";
+      else visitStatusEl.textContent = `Aktiven obisk: ${activeVisit.machine} (start ${fmtDT(activeVisit.startAt)})`;
+    }
+  }
+  renderShiftUI();
+
+  $("stepsApplyBtn").addEventListener("click", ()=>{
+    const v = $("stepsManual").value.trim();
+    stepCounter.setSteps(v);
+  });
+
+  $("shiftStartBtn").addEventListener("click", async ()=>{
+    if (activeShift) { alert("Izmena je že aktivna."); return; }
+
+    const shift = {
+      id: crypto.randomUUID(),
+      startAt: nowISO(),
+      endAt: null,
+      stepsTotal: 0
+    };
+
+    activeShift = shift;
+    await setMeta("activeShift", shift);
+    await putShift(shift);
+
+    stepCounter.reset();
+    await stepCounter.start();
+    renderShiftUI();
+  });
+
+  $("shiftStopBtn").addEventListener("click", async ()=>{
+    if (!activeShift) { alert("Ni aktivne izmene."); return; }
+
+    if (activeVisit) {
+      const ok = confirm("Imaš aktiven obisk stroja. Želiš najprej zaključiti obisk?");
+      if (ok) $("visitStopBtn").click();
+    }
+
+    activeShift.endAt = nowISO();
+    activeShift.stepsTotal = stepCounter.steps;
+    await putShift(activeShift);
+
+    await setMeta("activeShift", null);
+    activeShift = null;
+
+    stepCounter.stop();
+    renderShiftUI();
+    alert("Izmena zaključena ✅");
+  });
+
+  $("visitStartBtn").addEventListener("click", async ()=>{
+    if (!activeShift) { alert("Najprej zaženi izmeno."); return; }
+    if (activeVisit) { alert("Obisk stroja je že aktiven."); return; }
+
+    const machine = ($("visitMachine").value || "").trim();
+    if (!machine) { alert("Vpiši ali izberi stroj."); return; }
+
+    activeVisit = {
+      id: crypto.randomUUID(),
+      shiftId: activeShift.id,
+      machine,
+      startAt: nowISO(),
+      endAt: null,
+      stepsStart: stepCounter.steps,
+      stepsEnd: null,
+      stepsDelta: null,
+      note: ($("visitNote").value || "").trim(),
+    };
+
+    await setMeta("activeVisit", activeVisit);
+    await putVisit(activeVisit);
+    renderShiftUI();
+  });
+
+  $("visitStopBtn").addEventListener("click", async ()=>{
+    if (!activeVisit) { alert("Ni aktivnega obiska."); return; }
+
+    activeVisit.endAt = nowISO();
+    activeVisit.stepsEnd = stepCounter.steps;
+    activeVisit.stepsDelta = (activeVisit.stepsEnd - (activeVisit.stepsStart||0));
+    activeVisit.note = ($("visitNote").value || "").trim();
+
+    await putVisit(activeVisit);
+    await setMeta("activeVisit", null);
+    activeVisit = null;
+
+    $("visitNote").value = "";
+    renderShiftUI();
+    alert("Obisk zaključen ✅");
+  });
+
+  // ---- PREVENTIVA: Mark done ----
+  $("prevDoneBtn").addEventListener("click", async ()=>{
+    const machine = ($("prevMachine").value || "").trim();
+    const d = parseDateInput($("prevDate").value);
+    if (!machine) { $("prevMsg").textContent = "Izberi stroj."; return; }
+    if (!d) { $("prevMsg").textContent = "Izberi datum."; return; }
+
+    const service = {
+      id: crypto.randomUUID(),
+      type: SERVICE_ANNUAL,
+      machine,
+      date: d.toISOString(),
+      note: "Letna preventiva (1× leto)"
+    };
+    await putService(service);
+    $("prevMsg").textContent = "Zabeleženo ✅";
+    await refreshPreventivaList();
+  });
+
+  // ---- PIN flow ----
   const hasPin = await getMeta("pinHash");
   pinTitle.textContent = hasPin ? "Odkleni" : "Nastavi PIN (prvič)";
   pinHint.textContent = hasPin ? "Vnesi PIN." : "Vnesi PIN, ki ga boš uporabljal za odklep.";
@@ -783,11 +1009,13 @@ async function main(){
   if (await isUnlocked()) await showApp();
   else await lock();
 
-  // init UI defaults
-  await loadSettingsToUI();
+  // init UI
+  await renderLeadOptions();
+  await renderTeamChips();
   renderMats();
   renderPhotoPreview();
   await refreshSummaryDefaults();
+  await refreshPreventivaList();
 }
 
 main();
