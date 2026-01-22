@@ -136,9 +136,17 @@ $("loginBtn")?.addEventListener("click", async ()=>{
   try{
     await signInAnonymously(auth);
   } catch(e){
-    // Najpogostejši razlog: Anonymous ni enabled ali domena ni dodana
+    console.error("AUTH ERROR:", e);
+
+    const code = e?.code || "unknown";
+    const msg = e?.message || "";
+
     $("loginMsg").textContent =
-      "Ne morem v Firebase. Preveri: Authentication → Sign-in method → Anonymous ENABLE in Settings → Authorized domains (github.io).";
+      `Firebase napaka: ${code}\n` +
+      (msg ? msg : "") +
+      `\n\nNajpogosteje: ` +
+      `1) Authentication → Sign-in method → Anonymous ENABLE ` +
+      `2) Authentication → Settings → Authorized domains → dodaj primo.zh...github.io`;
   }
 });
 
