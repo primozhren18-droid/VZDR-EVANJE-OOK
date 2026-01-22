@@ -18,21 +18,10 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
-// =====================
-// PIN / zaklep
-// =====================
-const APP_PASSWORD = "1989";
-const UNLOCK_KEY = "vzdrzevanje_ook_unlocked";
-
-// FORCE: modal ne sme biti odprt ob zagonu (reši cache/overlay bug)
-window.addEventListener("load", async () => {
+// FORCE: modal ne sme biti odprt ob zagonu (reši overlay bug)
+window.addEventListener("load", () => {
   const m = document.getElementById("modal");
   if (m) m.classList.add("hidden");
-
-  // če je že odklenjeno, poskusi anon prijavo (da ni treba vsakič PIN)
-  if (localStorage.getItem(UNLOCK_KEY) === "1") {
-    try { await signInAnonymously(auth); } catch {}
-  }
 });
 
 const DEFAULT_MACHINES = [
@@ -138,46 +127,30 @@ $("syncBtn")?.addEventListener("click", async ()=> {
 });
 
 $("logoutBtn")?.addEventListener("click", async ()=> {
-  // zakleni in odjavi
-  localStorage.removeItem(UNLOCK_KEY);
   await signOut(auth);
 });
 
-// -------- AUTH (PIN) --------
+// -------- AUTH (BREZ GESLA: samo gumb) --------
 $("loginBtn")?.addEventListener("click", async ()=>{
   $("loginMsg").textContent = "";
-
-  const password = ($("password")?.value || "").trim();
-  if (!password) { $("loginMsg").textContent = "Vpiši geslo."; return; }
-
-  if (password !== APP_PASSWORD) {
-    $("loginMsg").textContent = "Napačno geslo.";
-    return;
-  }
-
-  // unlock
-  localStorage.setItem(UNLOCK_KEY, "1");
-
   try{
     await signInAnonymously(auth);
   } catch(e){
+    // Najpogostejši razlog: Anonymous ni enabled ali domena ni dodana
     $("loginMsg").textContent =
-      "Ne morem v Firebase. Preveri: Authentication → Sign-in method → Anonymous ENABLE.";
+      "Ne morem v Firebase. Preveri: Authentication → Sign-in method → Anonymous ENABLE in Settings → Authorized domains (github.io).";
   }
 });
 
 onAuthStateChanged(auth, async (user)=>{
-  // če ni prijave v Firebase, pokaži PIN login
   if (!user){
     if (unsubEntries) { unsubEntries(); unsubEntries = null; }
     entriesCache = [];
-
     loginBox?.classList.remove("hidden");
     appBox?.classList.add("hidden");
     return;
   }
 
-  // če je prijava OK (anon), pokaži app
   loginBox?.classList.add("hidden");
   appBox?.classList.remove("hidden");
 
@@ -188,11 +161,9 @@ onAuthStateChanged(auth, async (user)=>{
   await loadMachines();
   await setupEntriesListener();
 
-  // default dates (če elementi obstajajo)
   if ($("prevDate")) $("prevDate").value = fmtDateISO(new Date());
   if ($("machinePrevDate")) $("machinePrevDate").value = fmtDateISO(new Date());
 
-  // default previews
   resetPhotoUI();
 
   await refreshPreventivaList();
@@ -324,7 +295,7 @@ async function setupEntriesListener(){
   unsubEntries = onSnapshot(qy, (snap)=>{
     entriesCache = snap.docs.map(d=>({ id:d.id, ...d.data() }));
     renderEntries(getFilteredEntries());
-    refreshMachineProfile(); // osveži, če si na profilu stroja
+    refreshMachineProfile();
   });
 }
 
@@ -413,7 +384,6 @@ function renderEntries(list){
       $("think").value = e.think || "";
 
       resetPhotoUI(Array.isArray(e.photos) ? e.photos : []);
-
       showTab("new");
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
@@ -553,7 +523,7 @@ $("exportCsvBtn")?.addEventListener("click", ()=>{
   URL.revokeObjectURL(url);
 });
 
-// PDF: print -> save as PDF
+// PDF
 $("exportPdfBtn")?.addEventListener("click", ()=>window.print());
 
 // -------- PREVENTIVA (global) --------
