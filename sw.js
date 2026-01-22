@@ -1,4 +1,4 @@
-const CACHE = "vzdrzevanje-ook-v5";
+const CACHE = "vzdrzevanje-ook-v6";
 const ASSETS = [
   "./",
   "./index.html",
